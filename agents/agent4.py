@@ -3,6 +3,8 @@ import numpy as np
 from typing import List
 import math
 from pearhash import PearsonHasher
+from dahuffman import HuffmanCodec
+from bitstring import Bits
 import binascii
 
 
@@ -81,7 +83,7 @@ class Agent:
             return '0'
 
         for ch in message:
-            if ord(ch) == 39 or ord(ch) == 44 or ch.isdigit(): # only numbers, commas, apostrophes
+            if ord(ch) == 39 or ord(ch) == 44 or ch.isdigit():  # only numbers, commas, apostrophes
                 lat_long = True
         if lat_long:
             return '1'
@@ -91,10 +93,19 @@ class Agent:
 
         domain_type = self.get_domain_type(message)
 
-        binary_repr = self.string_to_binary(message, domain_type)
+        # Use ascii values to encode message
+        # binary_repr = self.string_to_binary(message, domain_type)
+        # integer_repr = int(binary_repr, 2)
+
+        # Use huffman encoding to encode message
+        bytes_repr = HuffmanCodec.from_data(message).encode(message)
+        binary_repr = bin(int(bytes_repr.hex(), 16))[2:].zfill(8)
+        integer_repr = int.from_bytes(bytes_repr, "big")
+
         # TODO: rashel - try using 2 bits, not 8
-        binary_repr = binary_repr + self.get_hash(binary_repr) + domain_type.zfill(8)
-        integer_repr = int(binary_repr, 2)
+        binary_repr = binary_repr + \
+            self.get_hash(binary_repr) + domain_type.zfill(8)
+        # integer_repr = int(binary_repr, 2)
 
         num_cards_to_encode = 1
         for n in range(1, 52):
@@ -102,7 +113,8 @@ class Agent:
                 num_cards_to_encode = n
                 break
         message_start_idx = len(deck) - num_cards_to_encode
-        message_cards = self.num_to_cards(integer_repr, deck[message_start_idx:])
+        message_cards = self.num_to_cards(
+            integer_repr, deck[message_start_idx:])
 
         return self.deck_encoded(message_cards)
 
@@ -121,7 +133,10 @@ class Agent:
             hash_bits = binary_repr[-8:]'''
 
             if len(hash_bits) == 8 and len(message_bits) and hash_bits == self.get_hash(message_bits):
-                message = self.binary_to_string(message_bits, domain_type)
+                message_byte = int(message_bits, 2).to_bytes(
+                    (int(message_bits, 2).bit_length() + 7) // 8, 'big')
+                message = HuffmanCodec.from_data(message).decode(message_byte)
+                # message = self.binary_to_string(message_bits, domain_type)
                 break
 
         # TODO: rashel - modify to be based on encoding type
