@@ -17,7 +17,7 @@ class Domain(Enum):
     LETTERS_NUMBERS = 4
     LAT_LONG = 5
 
-MAC_DOMAIN_VALUE = max([d.value for d in Domain])
+MAX_DOMAIN_VALUE = max([d.value for d in Domain])
 
 DomainFrequencies = {
     # reference of English letter frequencies: https://pi.math.cornell.edu/~mec/2003-2004/cryptography/subs/frequencies.html
@@ -36,6 +36,7 @@ EncodedBinary = namedtuple(
 class Agent:
     def __init__(self):
         self.rng = np.random.default_rng(seed=42)
+        self.hash = None
 
     def string_to_binary(self, message: str, domain: Domain) -> str:
         bytes_repr = HuffmanCodec.from_frequencies(
@@ -58,8 +59,8 @@ class Agent:
         result.extend(message_cards)
         return result
 
-    def get_encoded_cards(self, deck: List[int], start_idx: int) -> List[int]:
-        return [c for c in deck if c > start_idx]
+    def get_encoded_cards(self, deck: List[int], start_card_num: int) -> List[int]:
+        return [c for c in deck if c >= start_card_num]
 
     def cards_to_num(self, cards: List[int]) -> int:
         num_cards = len(cards)
@@ -143,6 +144,8 @@ class Agent:
         domain_type = self.get_domain_type(message)
 
         binary_repr = self.string_to_binary(message, domain_type)
+        self.hash = self.get_hash(binary_repr)
+        
         binary_repr = binary_repr + \
             self.domain_to_binary(domain_type) + self.get_hash(binary_repr)
         integer_repr = int(binary_repr, 2)
@@ -160,7 +163,6 @@ class Agent:
     def decode(self, deck: List[int]) -> str:
         message = ''
         domain_type = None
-        meet_checksum_count = 0
         for n in reversed(range(1, 51)):
             encoded_cards = self.get_encoded_cards(deck, n)
             integer_repr = self.cards_to_num(encoded_cards)
@@ -171,17 +173,11 @@ class Agent:
 
             if len_metadata_bits == 11 and parts.message_bits and parts.checksum_bits == self.get_hash(parts.message_bits):
                 domain_int = int(parts.domain_bits, 2)
-                if domain_int <= MAC_DOMAIN_VALUE:
+                if domain_int <= MAX_DOMAIN_VALUE:
                     domain_type = Domain(domain_int)
                     message = self.binary_to_string(
                         parts.message_bits, domain_type)
-
-                    # TODO: ugly hack to fix the checksum, can be improved
-                    if meet_checksum_count > 2:
-                        break
-                    meet_checksum_count += 1
-        if meet_checksum_count < 2:
-            return 'NULL'
+                    break
 
         return self.check_decoded_message(message, domain_type)
 
