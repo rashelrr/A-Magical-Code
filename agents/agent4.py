@@ -137,6 +137,12 @@ class Agent:
         message_bits = binary[:-8]
         return EncodedBinary(message_bits, checksum_bits)
 
+    def get_start_idx(self, idx_key: int) -> int:
+        return (52 // 6) * idx_key
+    
+    def get_start_idx_key(self, start_idx: int) -> int:
+        return start_idx // (52 // 6)
+
     def encode(self, message: str) -> List[int]:
         deck = generate_deck(self.rng)
 
@@ -156,17 +162,17 @@ class Agent:
         start_idx = len(deck) - num_cards_to_encode
         message_cards = self.num_to_cards(integer_repr, deck[start_idx:])
         message_cards.reverse()
-        start_idx_cards = self.num_to_cards(start_idx, deck[:6])
+        start_idx_cards = self.num_to_cards(self.get_start_idx_key(start_idx), deck[:3])
         start_idx_cards.reverse()
-        domain_cards = self.num_to_cards(domain_type.value, deck[6:9])
+        domain_cards = self.num_to_cards(domain_type.value, deck[3:6])
         domain_cards.reverse()
 
         return self.deck_encoded(message_cards + domain_cards + start_idx_cards)
 
     def decode(self, deck: List[int]) -> str:
         message = ''
-        start_idx = self.cards_to_num(self.get_encoded_cards(deck, 0, 5))
-        domain_int = self.cards_to_num(self.get_encoded_cards(deck, 6, 8))
+        start_idx = self.get_start_idx(self.cards_to_num(self.get_encoded_cards(deck, 0, 2)))
+        domain_int = self.cards_to_num(self.get_encoded_cards(deck, 3, 5))
 
         if start_idx <= 51:
             encoded_cards = self.get_encoded_cards(deck, start_idx)
