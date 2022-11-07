@@ -30,7 +30,7 @@ DomainFrequencies = {
 }
 
 EncodedBinary = namedtuple(
-    'EncodedBinary', ['message_bits', 'domain_bits', 'checksum_bits'])
+    'EncodedBinary', ['message_bits', 'checksum_bits'])
 
 
 class Agent:
@@ -59,8 +59,8 @@ class Agent:
         result.extend(message_cards)
         return result
 
-    def get_encoded_cards(self, deck: List[int], start_card_num: int) -> List[int]:
-        return [c for c in deck if c >= start_card_num]
+    def get_encoded_cards(self, deck: List[int], start_card_num: int, end_card_num=51) -> List[int]:
+        return [c for c in reversed(deck) if c >= start_card_num and c <= end_card_num]
 
     def cards_to_num(self, cards: List[int]) -> int:
         num_cards = len(cards)
@@ -134,9 +134,8 @@ class Agent:
 
     def get_binary_parts(self, binary: str) -> EncodedBinary:
         checksum_bits = binary[-8:]
-        domain_bits = binary[-11:-8]
-        message_bits = binary[:-11]
-        return EncodedBinary(message_bits, domain_bits, checksum_bits)
+        message_bits = binary[:-8]
+        return EncodedBinary(message_bits, checksum_bits)
 
     def encode(self, message: str) -> List[int]:
         deck = generate_deck(self.rng)
@@ -146,8 +145,7 @@ class Agent:
         binary_repr = self.string_to_binary(message, domain_type)
         self.hash = self.get_hash(binary_repr)
         
-        binary_repr = binary_repr + \
-            self.domain_to_binary(domain_type) + self.get_hash(binary_repr)
+        binary_repr = binary_repr + self.get_hash(binary_repr)
         integer_repr = int(binary_repr, 2)
 
         num_cards_to_encode = 1
@@ -155,27 +153,33 @@ class Agent:
             if math.factorial(n) >= integer_repr:
                 num_cards_to_encode = n
                 break
-        message_start_idx = len(deck) - num_cards_to_encode
-        message_cards = self.num_to_cards(
-            integer_repr, deck[message_start_idx:])
-        return self.deck_encoded(message_cards)
+        start_idx = len(deck) - num_cards_to_encode
+        message_cards = self.num_to_cards(integer_repr, deck[start_idx:])
+        message_cards.reverse()
+        start_idx_cards = self.num_to_cards(start_idx, deck[:6])
+        start_idx_cards.reverse()
+        domain_cards = self.num_to_cards(domain_type.value, deck[6:9])
+        domain_cards.reverse()
+
+        return self.deck_encoded(message_cards + domain_cards + start_idx_cards)
 
     def decode(self, deck: List[int]) -> str:
         message = ''
-        domain_type = None
-        for n in reversed(range(1, 51)):
-            encoded_cards = self.get_encoded_cards(deck, n)
+        start_idx = self.cards_to_num(self.get_encoded_cards(deck, 0, 5))
+        domain_int = self.cards_to_num(self.get_encoded_cards(deck, 6, 8))
+
+        if start_idx <= 51:
+            encoded_cards = self.get_encoded_cards(deck, start_idx)
             integer_repr = self.cards_to_num(encoded_cards)
             binary_repr = bin(int(integer_repr))[2:]
             parts = self.get_binary_parts(binary_repr)
-            len_metadata_bits = len(parts.domain_bits) + len(parts.checksum_bits)
-            domain_int = int(parts.domain_bits, 2) if parts.domain_bits else MAX_DOMAIN_VALUE + 1
+            len_metadata_bits = len(parts.checksum_bits)
 
-            if len_metadata_bits == 11 and domain_int <= MAX_DOMAIN_VALUE and parts.message_bits and parts.checksum_bits == self.get_hash(parts.message_bits):
+            if len_metadata_bits == 8 and domain_int <= MAX_DOMAIN_VALUE and parts.message_bits: # and parts.checksum_bits == self.get_hash(parts.message_bits):
                 domain_type = Domain(domain_int)
-                message = self.binary_to_string(
-                    parts.message_bits, domain_type)
-                break
+                message = self.binary_to_string(parts.message_bits, domain_type)
+        else:
+            return 'NULL'
 
         return self.check_decoded_message(message, domain_type)
 
